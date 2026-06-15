@@ -146,10 +146,10 @@ export function DropZone({
             </div>
             <div className="text-center">
               <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
-                Arrastra tu archivo aquí
+                Arrastra tu archivo o haz clic para subir
               </p>
               <p className="text-xs text-slate-400 mt-1">
-                XLS · XLSX · XLSB · CSV &nbsp;·&nbsp; máx. {maxMB} MB
+                XLS · XLSX · XLSB · CSV · máx. {maxMB} MB
               </p>
             </div>
           </>
