@@ -1,59 +1,29 @@
-# Changelog — D-MO
+## [v1.2.0] — 2026-06-20
 
-## 2026-06-20 — UI refactor, detección inteligente y mejoras de UX
+### 🚀 Features
+- **Detección inteligente de reportes:** Implementación de algoritmos de correspondencia (`calculateCompatibility`, `detectBestMatch`) para identificar automáticamente el tipo de esquema RFE según las columnas del archivo cargado.
+- **Capa de privacidad de metadatos:** Restricción de seguridad perimetral en la UI; las columnas autodetectadas y las advertencias de estructura solo se revelan si el archivo coincide en más del 50% con un esquema legítimo de la organización.
+- **Nuevos componentes de interfaz:** - `src/components/Header.tsx`: Navbar global compartido y unificado.
+  - `src/components/PreviewTable.tsx`: Previsualización ligera y eficiente de las primeras filas del archivo en caliente.
+  - `src/components/HowItWorks.tsx`: Onboarding visual de 3 pasos integrado en el flujo principal.
+- **Ruta `/about`:** Página dedicada `src/app/about/page.tsx` con la documentación del proyecto, guías de formato y especificaciones técnicas, aliviando la carga visual de la vista principal.
 
-Resumen
- - Refactor de la capa UI para mejorar la experiencia y el onboarding.
- - Implementación de detección automática de tipo de reporte por coincidencia de columnas.
- - Nueva página `/about`, componente `Header` compartido, y mejoras en la gestión de temas (light/dark).
+### 🔧 Changed
+- **Refactor de `src/app/page.tsx`:** Reorganización completa del estado de la aplicación, consola de logs (separación de logs técnicos y resumen de negocio) y manejo de alertas contextuales.
+- **Soporte nativo de Temas:** Integración de clases `dark:` en el Layout raíz y en el Header para garantizar una transición fluida y consistente en el modo oscuro (`bg-slate-50` / `bg-slate-950`).
+- **Modularización:** Migración de la información estática de formatos de exportación desde paneles inline hacia la nueva interfaz de `/about`.
+- **Tipado robusto:** Incorporación de `src/styles.d.ts` para resolver side-effects de importación de CSS en el entorno de compilación de TypeScript.
 
-Categorías (Convención: Added / Changed / Fixed / Notes)
+### 🐛 Fixed
+- **Falsos positivos en esquemas similares:** Corrección en el motor de compatibilidad mediante la creación de grupos equivalentes para evitar sugerencias cruzadas erróneas (ej. `cartera` ↔ `colocaciones`).
+- **Fuga de estilos en Modo Oscuro:** Solucionado el problema de persistencia de fondos claros en el Header al alternar el tema global.
+- **Persistencia de estado:** Corrección del ciclo de vida del estado de detección, asegurando un reset limpio de metadatos al remover el archivo actual.
 
-### Added
-- `src/components/Header.tsx`: nuevo header compartido para usar en `layout`.
-- `src/app/about/page.tsx`: página dedicada `/about` con descripción y guia de formatos.
-- `src/components/PreviewTable.tsx`: vista previa ligera de filas (primeras N filas).
-- `src/components/HowItWorks.tsx`: guía de 3 pasos en el flujo de usuario.
-- Detección de mejor correspondencia entre columnas y RFE schemas (`calculateCompatibility`, `detectBestMatch`).
+---
 
-### Changed
-- `src/app/page.tsx`: refactor completo — manejo de estados, preview, logs (summary + technical), detección automática y sugerencias de autocorrección.
-- `src/app/layout.tsx`: ahora incluye `Header` y aplica `bg-slate-50 dark:bg-slate-950` para respetar el tema global.
-- `src/components/Header.tsx`: añadido soporte explícito de fondo y variantes `dark:` para que responda al toggle de tema.
-- Export formats: información movida desde el panel inline a la nueva ruta `/about`.
-- `src/styles.d.ts`: añadido para evitar errores por import side-effect de CSS en TypeScript.
+### 📷 Antes / Después — Evolución de la Interfaz
 
-### Fixed
-- Evitar sugerencias engañosas entre reportes equivalentes (`cartera` <-> `colocaciones`) mediante grupos equivalentes.
-- Corregido bug donde el header no cambiaba su fondo en tema oscuro (falta de clases `dark:` en el layout/header).
-- Reinicio correcto del estado de detección al limpiar archivo cargado.
+* **Versión Anterior:** UI minimalista plana, navegación descentralizada, ausencia de feedback predictivo sobre el origen de los datos de entrada.
+* **Versión Actual:** Arquitectura orientada a la experiencia de usuario (UX), detección asistida con control de errores dinámico, previsualización en cliente y documentación integrada.
 
-Files touched (selección relevante)
-- `src/app/page.tsx` — entrada principal del UI y orquestador del cliente.
-- `src/app/layout.tsx` — layout raíz (ahora importa `Header`).
-- `src/components/Header.tsx` — nuevo componente compartido.
-- `src/app/about/page.tsx` — nueva página `About`.
-- `src/components/PreviewTable.tsx`, `HowItWorks.tsx`, `DropZone.tsx`, `LogConsole.tsx` — UI y microcopy.
-- `src/lib/file-parser.ts` — parsers usados (sin modificaciones mayores).
-- `src/lib/etl-engine.ts` — lógica ETL sin cambios.
-- `src/styles.d.ts` — declaración de tipos para CSS.
-
-Notas técnicas
-- Framework: Next.js + React + TypeScript (100% client-side).
-- Librerías: `papaparse`, `xlsx` para parsing/export; `next-themes` para gestión de tema.
-- Diseño: cambio del header a componente compartida en `layout` para consistencia entre rutas.
-
-Asistencia de IA
-- Modificaciones realizadas con asistencia de IA (generación de código y refactorizaciones).
-
-Antes / Después — Previsualización de la interfaz
-
-Descripción breve:
-- Antes: UI con menos orientación, header localizado solo en la página principal, ausencia de detección automática y ayuda contextual sobre formatos.
-- Después: header global en `layout`, página `/about`, detección automática con sugerencias, previews y mejor microcopy para guiar al usuario.
-
-
-![comparison v1.2.0 (AI)](public/assets/comparison-v1_2_0.jpg)
-
-Fuente de la imagen:
-> @omargpax - "Diseño: D-MO — captura antes/después"
+![Evolución de Interfaz D-MO](public/assets/comparison-v1_2_0.jpg)
