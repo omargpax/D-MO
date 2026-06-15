@@ -53,11 +53,7 @@ Descripción breve:
 - Después: header global en `layout`, página `/about`, detección automática con sugerencias, previews y mejor microcopy para guiar al usuario.
 
 
-![Antes vs Después](/path/to/before-after.png)
+![comparison v1.2.0 (AI)](public/assets/comparison-v1_2_0.jpg)
 
-Cita / Fuente de la imagen:
+Fuente de la imagen:
 > @omargpax - "Diseño: D-MO — captura antes/después"
-
---
-
-Si quieres que exporte este changelog en formato JSON o lo publique en formato release, dime el formato objetivo y lo adapto.

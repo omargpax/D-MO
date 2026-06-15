@@ -3,7 +3,7 @@ import Link from "next/link";
 export default function AboutPage() {
   return (
     <div className="min-h-screen transition-colors duration-300">
-      <div className="max-w-2xl mx-auto px-4 py-8">
+      <div className="max-w-2xl mx-auto px-4 py-6">
         <div className="mb-6">
           <Link href="/" className="text-sm text-slate-500 hover:text-slate-700">← Volver</Link>
         </div>
@@ -22,6 +22,24 @@ export default function AboutPage() {
 
           <p className="mt-4 text-xs text-slate-400"> <b className="text-brand-700">Recomendación</b>: elige CSV para exportaciones ligeras y rápidas; XLSX para integración general; XLSB cuando priorices rendimiento de lectura en BI.</p>
         </div>
+        <p className="text-center text-xs text-slate-300 dark:text-slate-700 mt-6">
+          Procesamiento 100% local · Sin envío de datos
+          <span className="mx-2">·</span>
+        </p>
+
+        {/* Developer Badge */}
+        <p className="text-center text-xs text-slate-300 dark:text-slate-700 mt-2">
+          <span>Developed by </span>
+          <a
+            href="https://omargpax.dev"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-bold text-brand-600 hover:text-brand-500 transition-colors cursor-pointer"
+          >
+            @omargpax
+          </a>
+
+        </p>
       </div>
     </div>
   );

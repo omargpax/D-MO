@@ -118,6 +118,11 @@ function calculateCompatibility(fileColumns: string[], schema: string[], reporte
   return { reporte: reporteName, score, matched, total };
 }
 
+function getMissingColumns(fileColumns: string[], schema: string[]) {
+  const fileSet = new Set(fileColumns.map((c) => normalizeKey(String(c))));
+  return schema.filter((s) => !fileSet.has(normalizeKey(String(s))));
+}
+
 function detectBestMatch(fileColumns: string[]) {
   const results: ScoreResult[] = Object.entries(RFE_SCHEMAS).map(([reporte, schema]) =>
     calculateCompatibility(fileColumns, schema, reporte)
@@ -125,6 +130,8 @@ function detectBestMatch(fileColumns: string[]) {
   results.sort((a, b) => b.score - a.score);
   return results;
 }
+
+const PRIVACY_MATCH_THRESHOLD = 0.5;
 
 function getValidationState(score: number) {
   if (score > 0.85) return "success";
@@ -380,7 +387,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
-      <div className="max-w-2xl mx-auto px-4 py-8">
+      <div className="max-w-2xl mx-auto px-4 py-2">
 
         <HowItWorks />
 
@@ -470,54 +477,61 @@ export default function Home() {
 
         {/* Column validation (RFE) */}
         {/* Detection summary & suggestion */}
-        {fileState && detectionResults && (
-          <div className="mb-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
-            <div className="flex items-start gap-3">
-              <div className="flex-1 text-xs text-slate-600">
-                <div className="font-medium text-slate-700 dark:text-slate-200">Archivo analizado</div>
-                <div className="mt-1 text-xs text-slate-500">
-                  ✔ {fileState.headers.length} columnas detectadas · {
-                    RFE_SCHEMAS[report]
-                      ? `${calculateCompatibility(fileState.headers, RFE_SCHEMAS[report], report).matched} coinciden con ${report}`
-                      : "— Selección manual —"
-                  }
-                </div>
-              </div>
-              <div className="text-right">
-                {bestMatch && (
-                  <div className="text-xs">
-                    <div className="text-slate-500">Mejor coincidencia:</div>
-                    <div className="font-medium text-slate-700 dark:text-slate-200">{bestMatch.reporte} ({Math.round(bestMatch.score * 100)}%)</div>
+        {fileState && detectionResults && (() => {
+          const isLowMatch = kpi === "RFE" && (!bestMatch || bestMatch.score <= PRIVACY_MATCH_THRESHOLD);
+          return (
+            <div className="mb-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
+              <div className="flex items-start gap-3">
+                <div className="flex-1 text-xs text-slate-600">
+                  <div className="font-medium text-slate-700 dark:text-slate-200">Archivo analizado</div>
+                  <div className="mt-1 text-xs text-slate-500">
+                    {isLowMatch
+                      ? "Posible error de selección de reporte"
+                      : `✔ ${fileState.headers.length} columnas detectadas · ${RFE_SCHEMAS[report]
+                        ? `${calculateCompatibility(fileState.headers, RFE_SCHEMAS[report], report).matched} coinciden con ${report}`
+                        : "— Selección manual —"}`}
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* Suggestion */}
-            {kpi === "RFE" && bestMatch && bestMatch.reporte !== report && bestMatch.score > 0.7 && !reportsInSameGroup(report, bestMatch.reporte) && (
-              <div className="mt-3 p-3 rounded-md bg-amber-50 border border-amber-100 text-amber-800 text-sm">
-                <div className="font-medium">⚠ Posible error de selección de reporte</div>
-                <div className="mt-1">Este archivo coincide más con: <span className="font-semibold">{bestMatch.reporte}</span> ({Math.round(bestMatch.score * 100)}%)</div>
-                <div className="mt-2">
-                  <button
-                    onClick={() => {
-                      if (!bestMatch) return;
-                      setReport(bestMatch.reporte);
-                      setLogs((l) => [...l, mkLog("info", `Reporte cambiado automáticamente a ${bestMatch.reporte}`)]);
-                      setValidationState(getValidationState(bestMatch.score));
-                    }}
-                    className="mt-1 inline-flex items-center gap-2 text-xs px-3 py-1 rounded-md bg-amber-600 text-white"
-                  >
-                    Cambiar automáticamente
-                  </button>
+                </div>
+                <div className="text-right">
+                  {!isLowMatch && bestMatch && (
+                    <div className="text-xs">
+                      <div className="text-slate-500">Mejor coincidencia:</div>
+                      <div className="font-medium text-slate-700 dark:text-slate-200">{bestMatch.reporte} ({Math.round(bestMatch.score * 100)}%)</div>
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
-          </div>
-        )}
+
+              {isLowMatch ? (
+                <div className="mt-3 p-3 rounded-md bg-amber-50 border border-amber-100 text-amber-800 text-sm">
+                  <div className="font-medium">⚠ Posible error de selección de reporte</div>
+                  <div className="mt-1 text-slate-600 text-xs">No se puede determinar con suficiente confianza el layout del reporte.</div>
+                </div>
+              ) : (kpi === "RFE" && bestMatch && bestMatch.reporte !== report && bestMatch.score > 0.7 && !reportsInSameGroup(report, bestMatch.reporte) && (
+                <div className="mt-3 p-3 rounded-md bg-amber-50 border border-amber-100 text-amber-800 text-sm">
+                  <div className="font-medium">⚠ Posible error de selección de reporte</div>
+                  <div className="mt-1">Este archivo coincide más con: <span className="font-semibold">{bestMatch.reporte}</span> ({Math.round(bestMatch.score * 100)}%)</div>
+                  <div className="mt-2">
+                    <button
+                      onClick={() => {
+                        if (!bestMatch) return;
+                        setReport(bestMatch.reporte);
+                        setLogs((l) => [...l, mkLog("info", `Reporte cambiado automáticamente a ${bestMatch.reporte}`)]);
+                        setValidationState(getValidationState(bestMatch.score));
+                      }}
+                      className="mt-1 inline-flex items-center gap-2 text-xs px-3 py-1 rounded-md bg-amber-600 text-white"
+                    >
+                      Cambiar automáticamente
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         {/* Column validation (RFE) */}
-        {fileState && kpi === "RFE" && (
+        {fileState && kpi === "RFE" && bestMatch && bestMatch.score > PRIVACY_MATCH_THRESHOLD && (
           <div className="mb-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
             <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Validación de columnas (RFE)</p>
             <ColumnValidation fileHeaders={fileState.headers} report={report} />

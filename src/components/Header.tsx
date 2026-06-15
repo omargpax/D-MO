@@ -4,7 +4,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function Header() {
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 rounded-md">
+    <div className="max-w-2xl mx-auto px-4 pt-6 pb-0 rounded-md">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2.5">
           <div className="p-1.5 rounded-lg bg-brand-500/10 dark:bg-brand-900/20">
