@@ -12,6 +12,7 @@
 - **Refactor de `src/app/page.tsx`:** Reorganización completa del estado de la aplicación, consola de logs (separación de logs técnicos y resumen de negocio) y manejo de alertas contextuales.
 - **Soporte nativo de Temas:** Integración de clases `dark:` en el Layout raíz y en el Header para garantizar una transición fluida y consistente en el modo oscuro (`bg-slate-50` / `bg-slate-950`).
 - **Modularización:** Migración de la información estática de formatos de exportación desde paneles inline hacia la nueva interfaz de `/about`.
+- **Selección de fila de encabezado (modo Custom):** Permite indicar qué fila del archivo contiene los nombres reales de las columnas; las filas previas se descartan automáticamente y el panel de selección de columnas se actualiza en tiempo real. El valor se confirma al salir del campo o al presionar Enter, evitando re-mapeos intermedios durante la edición.
 - **Tipado robusto:** Incorporación de `src/styles.d.ts` para resolver side-effects de importación de CSS en el entorno de compilación de TypeScript.
 
 ### 🐛 Fixed

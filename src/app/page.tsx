@@ -61,7 +61,6 @@ function getMockSample(report: string, kpi: string) {
       })),
     };
   }
-
   return null;
 }
 
@@ -93,9 +92,8 @@ function ColumnValidation({ fileHeaders, report }: { fileHeaders: string[]; repo
 
 type ScoreResult = { reporte: string; score: number; matched: number; total: number };
 
-const RFE_SCHEMAS = EXPECTED_COLUMNS; // reuse expected columns as schemas for detection
+const RFE_SCHEMAS = EXPECTED_COLUMNS;
 
-// Reports that should be treated as equivalent for detection/suggestions
 const EQUIVALENT_REPORT_GROUPS: string[][] = [
   ["cartera", "colocaciones"],
 ];
@@ -118,11 +116,6 @@ function calculateCompatibility(fileColumns: string[], schema: string[], reporte
   return { reporte: reporteName, score, matched, total };
 }
 
-function getMissingColumns(fileColumns: string[], schema: string[]) {
-  const fileSet = new Set(fileColumns.map((c) => normalizeKey(String(c))));
-  return schema.filter((s) => !fileSet.has(normalizeKey(String(s))));
-}
-
 function detectBestMatch(fileColumns: string[]) {
   const results: ScoreResult[] = Object.entries(RFE_SCHEMAS).map(([reporte, schema]) =>
     calculateCompatibility(fileColumns, schema, reporte)
@@ -142,6 +135,50 @@ function getValidationState(score: number) {
 function mkLog(type: LogEntry["type"], message: string): LogEntry {
   return { type, message, ts: new Date().toISOString().split("T")[1].split(".")[0] };
 }
+
+// ─── NUEVA FUNCIÓN AUXILIAR ───────────────────────────────────────────────────
+/**
+ * Dado el array de filas crudas (rawRows) y el índice de fila de encabezado
+ * (1-based), devuelve:
+ *  - headers: string[] con los nombres de columna de esa fila
+ *  - data: Record<string, unknown>[] con las filas posteriores mapeadas
+ *
+ * Si rawRows no está disponible (CSV simple), devuelve null para que el
+ * llamador use el fallback de `data` original.
+ */
+function remapByHeaderRow(
+  rawRows: unknown[][] | undefined,
+  targetRow: number // 1-based
+): { headers: string[]; data: Record<string, unknown>[] } | null {
+  if (!rawRows || rawRows.length < targetRow) return null;
+
+  // La fila de encabezado (índice 0-based = targetRow - 1)
+  const headerIdx = targetRow - 1;
+  const rawHeaders = (rawRows[headerIdx] as unknown[]).map((cell) =>
+    cell != null && String(cell).trim() !== "" ? String(cell).trim() : `Col_${String(cell)}`
+  );
+
+  // Deduplicar encabezados vacíos/repetidos añadiendo sufijo
+  const seen: Record<string, number> = {};
+  const headers = rawHeaders.map((h) => {
+    if (!seen[h]) { seen[h] = 1; return h; }
+    const suffixed = `${h}_${seen[h]++}`;
+    return suffixed;
+  });
+
+  // Filas de datos: todo lo que venga DESPUÉS del encabezado
+  const dataRows = rawRows.slice(headerIdx + 1);
+  const data: Record<string, unknown>[] = dataRows
+    .filter((row) => (row as unknown[]).some((cell) => cell != null && String(cell).trim() !== "")) // omitir filas vacías
+    .map((row) => {
+      const obj: Record<string, unknown> = {};
+      headers.forEach((h, i) => { obj[h] = (row as unknown[])[i] ?? null; });
+      return obj;
+    });
+
+  return { headers, data };
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 type FileState = {
   name: string;
@@ -171,14 +208,42 @@ export default function Home() {
   const [showPreview, setShowPreview] = useState(false);
   const [showTechnicalLogs, setShowTechnicalLogs] = useState(false);
   const [hasRun, setHasRun] = useState(false);
-  const [detectionResults, setDetectionResults] = useState<{
-    reporte: string;
-    score: number;
-    matched: number;
-    total: number;
-  }[] | null>(null);
-  const [bestMatch, setBestMatch] = useState<{ reporte: string; score: number; matched: number; total: number } | null>(null);
+  const [detectionResults, setDetectionResults] = useState<ScoreResult[] | null>(null);
+  const [bestMatch, setBestMatch] = useState<ScoreResult | null>(null);
   const [validationState, setValidationState] = useState<string | null>(null);
+
+  // ─── NUEVO ESTADO: fila de encabezado seleccionada (1-based, default 1) ────
+  const [headerRow, setHeaderRow] = useState<number>(1);
+  // Valor crudo del input como string para permitir edición libre (ej. borrar "1" antes de escribir "3")
+  const [headerRowInput, setHeaderRowInput] = useState<string>("1");
+  // Vista "efectiva" del archivo según la fila de encabezado elegida
+  const [effectiveHeaders, setEffectiveHeaders] = useState<string[]>([]);
+  const [effectiveData, setEffectiveData] = useState<Record<string, unknown>[]>([]);
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // ─── NUEVA FUNCIÓN: aplica el re-mapeo cuando cambia la fila de encabezado ──
+  const applyHeaderRow = useCallback(
+    (row: number, fs: FileState) => {
+      const remapped = remapByHeaderRow(fs.rawRows, row);
+      if (remapped) {
+        setEffectiveHeaders(remapped.headers);
+        setEffectiveData(remapped.data);
+        setSelectedCols(new Set(remapped.headers));
+        setLogs((prev) => [
+          ...prev,
+          mkLog("info", `Encabezado actualizado → fila ${row}: [${remapped.headers.slice(0, 4).join(", ")}${remapped.headers.length > 4 ? "…" : ""}]`),
+          mkLog("dim", `${remapped.data.length} filas de datos disponibles (filas 1-${row - 1} descartadas)`),
+        ]);
+      } else {
+        // Fallback: sin rawRows (ej. CSV sin filas crudas o fila = 1 original)
+        setEffectiveHeaders(fs.headers);
+        setEffectiveData(fs.data);
+        setSelectedCols(new Set(fs.headers));
+      }
+    },
+    []
+  );
+  // ─────────────────────────────────────────────────────────────────────────────
 
   const handleFile = useCallback((file: File) => {
     setLoadingFile(true);
@@ -219,7 +284,7 @@ export default function Home() {
           initLogs.push(mkLog("dim", `Tamaño: ${fileMB.toFixed(1)} MB`));
         }
 
-        setFileState({
+        const newFileState: FileState = {
           name: file.name,
           size: file.size,
           data: parsed.data,
@@ -228,25 +293,35 @@ export default function Home() {
           csvDelimiter: parsed.csvDelimiter,
           rawRows: parsed.rawRows,
           headerRowIndex: parsed.headerRowIndex,
-        });
-        setSelectedCols(new Set(parsed.headers));
+        };
+
+        setFileState(newFileState);
         setLogs(initLogs);
         setHasRun(false);
         setShowPreview(true);
-        // run detection on the parsed headers (use normalized keys)
+
+        // ─── Inicializar vista efectiva con la fila de encabezado actual ──────
+        // Reseteamos a fila 1 al cargar un archivo nuevo para evitar
+        // que una selección previa quede desfasada con el nuevo archivo.
+        setHeaderRow(1);
+        setHeaderRowInput("1");
+        setEffectiveHeaders(parsed.headers);
+        setEffectiveData(parsed.data);
+        setSelectedCols(new Set(parsed.headers));
+        // ─────────────────────────────────────────────────────────────────────
+
+        // Detección automática
         try {
           const results = detectBestMatch(parsed.headers || []);
           setDetectionResults(results);
           setBestMatch(results.length ? results[0] : null);
-          // compute validation for currently selected report if applicable
           if (RFE_SCHEMAS[report]) {
             const sel = calculateCompatibility(parsed.headers || [], RFE_SCHEMAS[report], report);
             setValidationState(getValidationState(sel.score));
           } else {
             setValidationState(null);
           }
-        } catch (e) {
-          // ignore detection errors
+        } catch {
           setDetectionResults(null);
           setBestMatch(null);
           setValidationState(null);
@@ -266,7 +341,7 @@ export default function Home() {
     };
 
     ext === ".csv" ? reader.readAsText(file) : reader.readAsArrayBuffer(file);
-  }, []);
+  }, [report]);
 
   const handleKpiChange = (val: string) => {
     setKpi(val);
@@ -275,6 +350,17 @@ export default function Home() {
     }
     if (val === "RFE") setReport("clientes");
   };
+
+  // ─── NUEVO HANDLER: cambio de fila de encabezado ─────────────────────────
+  const handleHeaderRowChange = (val: number) => {
+    if (!fileState) return;
+    const safeVal = Math.max(1, Math.min(val, (fileState.rawRows?.length ?? fileState.data.length + 1) - 1));
+    setHeaderRow(safeVal);
+    applyHeaderRow(safeVal, fileState);
+    setShowPreview(true);
+    setHasRun(false);
+  };
+  // ─────────────────────────────────────────────────────────────────────────
 
   const handleProcess = async () => {
     if (!fileState) return;
@@ -296,7 +382,13 @@ export default function Home() {
     let result: ETLResult | null = null;
     try {
       if (kpi === "CUSTOM") {
-        result = processCustom(fileState.data, Array.from(selectedCols), runLogs);
+        // ─── CAMBIO: usar effectiveData/effectiveHeaders en lugar de fileState.data ──
+        // effectiveData ya tiene las filas previas al encabezado descartadas y
+        // los nombres de columna correctos según la fila seleccionada.
+        runLogs.push(mkLog("dim", `  FILA ENCABEZADO: ${headerRow} · Filas descartadas: ${headerRow - 1}`));
+        runLogs.push(mkLog("dim", `  Filas a procesar: ${effectiveData.length}`));
+        result = processCustom(effectiveData, Array.from(selectedCols), runLogs);
+        // ─────────────────────────────────────────────────────────────────────
       } else {
         setProcessingMessage("Aplicando reglas...");
         switch (report) {
@@ -309,7 +401,7 @@ export default function Home() {
             result = processFondoComun(
               fileState.data,
               fileState.headers,
-              fileState.rawRows,        // ← pasa las filas crudas para el ajuste estructural
+              fileState.rawRows,
               fileState.headerRowIndex
             );
             break;
@@ -340,7 +432,7 @@ export default function Home() {
       runLogs.push(mkLog("success", `     Tiempo total     : ${elapsed} ms`));
       runLogs.push(mkLog("success", "══════════════════════════════════════════"));
 
-      setStats({ total: fileState.data.length, exported: result.rows.length, cols: result.cols.length, ms: elapsed });
+      setStats({ total: effectiveData.length, exported: result.rows.length, cols: result.cols.length, ms: elapsed });
     } catch (err) {
       runLogs.push(mkLog("error", `[ERROR] ${(err as Error).message}`));
     }
@@ -349,6 +441,12 @@ export default function Home() {
     setProcessing(false);
     setHasRun(true);
   };
+
+  // ─── Número máximo de filas disponibles para elegir como encabezado ────────
+  const maxHeaderRow = fileState
+    ? Math.max(1, (fileState.rawRows?.length ?? fileState.data.length + 1) - 1)
+    : 10;
+  // ─────────────────────────────────────────────────────────────────────────────
 
   const SelectField = ({
     label, value, onChange, options, disabled,
@@ -405,6 +503,12 @@ export default function Home() {
               setDetectionResults(null);
               setBestMatch(null);
               setValidationState(null);
+              // ─── Resetear estado de encabezado ─────────────────────────────
+              setHeaderRow(1);
+              setHeaderRowInput("1");
+              setEffectiveHeaders([]);
+              setEffectiveData([]);
+              // ───────────────────────────────────────────────────────────────
             }}
             loading={loadingFile}
             loadingProgress={loadingProgress}
@@ -418,12 +522,21 @@ export default function Home() {
                 onClick={() => {
                   const sample = getMockSample(report, kpi);
                   if (!sample) return;
-                  setFileState({ name: sample.name, size: 12345, data: sample.data, headers: sample.headers, isCSV: true });
+                  const mockFileState: FileState = {
+                    name: sample.name,
+                    size: 12345,
+                    data: sample.data,
+                    headers: sample.headers,
+                    isCSV: true,
+                  };
+                  setFileState(mockFileState);
+                  setHeaderRow(1);
+                  setEffectiveHeaders(sample.headers);
+                  setEffectiveData(sample.data);
                   setSelectedCols(new Set(sample.headers));
                   setLogs([mkLog("info", "Dataset de prueba cargado para CUSTOM.")]);
                   setHasRun(false);
                   setShowPreview(true);
-                  // run detection for test sample as well
                   const results = detectBestMatch(sample.headers || []);
                   setDetectionResults(results);
                   setBestMatch(results.length ? results[0] : null);
@@ -439,8 +552,10 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Selectors */}
-        <div className="grid grid-cols-3 gap-3 mb-4">
+        {/* ─── Selectors ──────────────────────────────────────────────────────── */}
+        {/* En modo CUSTOM mostramos 3 columnas + 1 extra para "Selección de encabezado" */}
+        {/* En modo RFE mantenemos el grid de 3 columnas original */}
+        <div className={`grid gap-3 mb-4 ${kpi === "CUSTOM" ? "grid-cols-4" : "grid-cols-3"}`}>
           <SelectField
             label="KPI"
             value={kpi}
@@ -460,23 +575,81 @@ export default function Home() {
             onChange={setOutputFormat}
             options={OUTPUT_FORMATS}
           />
+
+          {/* ─── NUEVO CAMPO: Selección de encabezado (solo en CUSTOM) ──────── */}
+          {kpi === "CUSTOM" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                Fila encabezado
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={headerRowInput}
+                  disabled={!fileState}
+                  onChange={(e) => {
+                    // Permitir solo dígitos o campo vacío mientras el usuario edita
+                    const raw = e.target.value.replace(/[^0-9]/g, "");
+                    setHeaderRowInput(raw);
+                  }}
+                  onBlur={() => {
+                    // Al salir del campo, confirmar el valor o volver al anterior
+                    const v = parseInt(headerRowInput, 10);
+                    if (!isNaN(v) && v >= 1) {
+                      handleHeaderRowChange(v);
+                      setHeaderRowInput(String(Math.max(1, Math.min(v, maxHeaderRow))));
+                    } else {
+                      // Campo vacío o inválido → restaurar el valor confirmado
+                      setHeaderRowInput(String(headerRow));
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  }}
+                  className="
+                    w-full rounded-lg border border-slate-200 dark:border-slate-800
+                    bg-white dark:bg-slate-900
+                    text-slate-700 dark:text-slate-200
+                    text-sm px-3 py-2.5
+                    focus:outline-none focus:ring-2 focus:ring-brand-400/40 focus:border-brand-400
+                    disabled:opacity-40 disabled:cursor-not-allowed
+                    transition-all duration-150
+                  "
+                />
+                {/* Indicador de rango disponible */}
+                {fileState && (
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-600 text-xs pointer-events-none select-none">
+                    /{maxHeaderRow}
+                  </span>
+                )}
+              </div>
+              {/* Hint bajo el campo */}
+              <p className="text-[10px] text-slate-400 leading-tight">
+                {fileState
+                  ? headerRow === 1
+                    ? "Fila 1 = encabezado original"
+                    : `Descarta ${headerRow - 1} fila${headerRow - 1 > 1 ? "s" : ""} previas`
+                  : "Carga un archivo primero"}
+              </p>
+            </div>
+          )}
+          {/* ──────────────────────────────────────────────────────────────────── */}
         </div>
 
-        {/* Export formats info removed from this location; moved to About D-MO in footer */}
-
-        {/* Custom column picker */}
+        {/* Custom column picker — ahora usa effectiveHeaders */}
         {kpi === "CUSTOM" && fileState && (
           <div className="mb-4">
             <CustomColumnSelector
-              headers={fileState.headers}
+              headers={effectiveHeaders}
               selected={selectedCols}
               onChange={setSelectedCols}
             />
           </div>
         )}
 
-        {/* Column validation (RFE) */}
-        {/* Detection summary & suggestion */}
+        {/* Column validation (RFE) — detection summary & suggestion */}
         {fileState && detectionResults && (() => {
           const isLowMatch = kpi === "RFE" && (!bestMatch || bestMatch.score <= PRIVACY_MATCH_THRESHOLD);
           return (
@@ -487,8 +660,8 @@ export default function Home() {
                   <div className="mt-1 text-xs text-slate-500">
                     {isLowMatch
                       ? "Posible error de selección de reporte"
-                      : `✔ ${fileState.headers.length} columnas detectadas · ${RFE_SCHEMAS[report]
-                        ? `${calculateCompatibility(fileState.headers, RFE_SCHEMAS[report], report).matched} coinciden con ${report}`
+                      : `✔ ${effectiveHeaders.length} columnas detectadas · ${RFE_SCHEMAS[report]
+                        ? `${calculateCompatibility(effectiveHeaders, RFE_SCHEMAS[report], report).matched} coinciden con ${report}`
                         : "— Selección manual —"}`}
                   </div>
                 </div>
@@ -534,14 +707,14 @@ export default function Home() {
         {fileState && kpi === "RFE" && bestMatch && bestMatch.score > PRIVACY_MATCH_THRESHOLD && (
           <div className="mb-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
             <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Validación de columnas (RFE)</p>
-            <ColumnValidation fileHeaders={fileState.headers} report={report} />
+            <ColumnValidation fileHeaders={effectiveHeaders} report={report} />
           </div>
         )}
 
-        {/* Preview */}
+        {/* Preview — usa effectiveHeaders y effectiveData */}
         {fileState && showPreview && (
           <div className="mb-4">
-            <PreviewTable headers={fileState.headers} rows={fileState.data} limit={10} />
+            <PreviewTable headers={effectiveHeaders} rows={effectiveData} limit={10} />
           </div>
         )}
 
@@ -598,7 +771,6 @@ export default function Home() {
           <a href="/about" className="text-xs font-medium text-brand-600 hover:text-brand-500 underline">About D-MO</a>
         </p>
 
-        {/* Developer Badge */}
         <p className="text-center text-xs text-slate-300 dark:text-slate-700 mt-2">
           <span>Developed by </span>
           <a
@@ -609,7 +781,6 @@ export default function Home() {
           >
             @omargpax
           </a>
-
         </p>
 
       </div>
