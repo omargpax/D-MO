@@ -1,7 +1,6 @@
 "use client";
 import { useState, useCallback } from "react";
-import { DatabaseZap, ChevronDown } from "lucide-react";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { ChevronDown } from "lucide-react";
 import { DropZone } from "@/components/DropZone";
 import { CustomColumnSelector } from "@/components/CustomColumnSelector";
 import { LogConsole } from "@/components/LogConsole";
@@ -37,12 +36,21 @@ function normalizeKey(k: string) {
 }
 
 const EXPECTED_COLUMNS: Record<string, string[]> = {
-  clientes: ["estado bc", "cod_agencia", "agencia", "cod_asesor", "asesor_servicios", "cod_ac", "asociacion_comunal", "situación"],
-  clientes_in: ["AGENCIA", "CODIGO AS", "ASESOR DE SERVICIO", "CODIGO AC", "ASOCIACION COMUNAL", "CODIGO CLIENTE", "NOMBRE CLIENTE", "TIPO SOCIO", "Mes"],
-  clientes_out: ["AGENCIA", "CODIGO AS", "ASESOR DE SERVICIO", "CODIGO AC", "ASOCIACION COMUNAL", "CODIGO CLIENTE", "NOMBRE CLIENTE", "TIPO SOCIO", "MOTIVO SALIDA", "Mes"],
+  clientes: ["estado bc", "cod_agencia", "agencia", "cod_asesor", "asesor_servicios", "cod_ac", "asociacion_comunal", "Situacion"],
+  clientes_in: ["AGENCIA", "CODIGO AS", "ASESOR DE SERVICIO", "CODIGO AC", "ASOCIACION COMUNAL", "CODIGO CLIENTE", "NOMBRE CLIENTE", "TIPO SOCIO"],
+  clientes_out: ["AGENCIA", "CODIGO AS", "ASESOR DE SERVICIO", "CODIGO AC", "ASOCIACION COMUNAL", "CODIGO CLIENTE", "NOMBRE CLIENTE", "TIPO SOCIO", "MOTIVO SALIDA"],
   colocaciones: ["cod_agencia", "agencia", "cod_asesor", "asesor_servicios", "cod_ac", "asociacion_comunal", "cod_cliente", "cliente", "num_credito", "monto_colocado"],
   cartera: ["cod_agencia", "agencia", "cod_asesor", "asesor_servicios", "cod_ac", "asociacion_comunal", "num_credito", "tipo_credito", "monto_colocado", "saldo_total"],
   fondo_comun: ["Nombre Agencia", "Asesor de banca comunal", "Nro de operación", "Codigo de bc", "Nombre banca comunal", "Monto desembolsado"],
+};
+
+const EXPECTED_COLUMN_COUNT: Record<string, number> = {
+  clientes: 57,
+  clientes_in: 21,
+  clientes_out: 22,
+  colocaciones: 74,
+  cartera: 93,
+  fondo_comun: 32,
 };
 
 function getMockSample(report: string, kpi: string) {
@@ -66,6 +74,7 @@ function getMockSample(report: string, kpi: string) {
 
 function ColumnValidation({ fileHeaders, report }: { fileHeaders: string[]; report: string }) {
   const expected = EXPECTED_COLUMNS[report] || [];
+  const expectedCount = EXPECTED_COLUMN_COUNT[report] ?? 0;
   const normMap: Record<string, string> = {};
   fileHeaders.forEach((h) => { normMap[normalizeKey(h)] = h; });
 
@@ -74,23 +83,75 @@ function ColumnValidation({ fileHeaders, report }: { fileHeaders: string[]; repo
     found: !!normMap[normalizeKey(e)],
   }));
 
-  const extras = fileHeaders.filter((h) => !expected.some((e) => normalizeKey(e) === normalizeKey(h)));
+  const extras = fileHeaders.filter(
+    (h) => !expected.some((e) => normalizeKey(e) === normalizeKey(h))
+  );
+
+  const totalOk = expectedCount === 0 || fileHeaders.length === expectedCount;
+  const totalWarn = expectedCount > 0 && fileHeaders.length !== expectedCount;
 
   return (
-    <div className="mt-2 grid grid-cols-1 gap-2 text-xs">
+    <div className="mt-2 grid grid-cols-1 gap-3 text-xs">
+      {/* Validación de conteo total */}
+      {expectedCount > 0 && (
+        <div
+          className={`flex items-center gap-2 px-3 py-2 rounded-md border ${totalOk
+            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+            : "bg-amber-50 border-amber-200 text-amber-700"
+            }`}
+        >
+          <span>
+            <span className="font-semibold">
+              {fileHeaders.length} columnas detectadas
+            </span>{" "}
+            — se esperan{" "}
+            <span className="font-semibold">{expectedCount}</span>
+            {totalWarn && (
+              <span className="ml-1">
+                ({fileHeaders.length > expectedCount ? `+${fileHeaders.length - expectedCount} extra` : `-${expectedCount - fileHeaders.length} faltantes`})
+              </span>
+            )}
+          </span>
+        </div>
+      )}
+
+      {/* Validación de columnas clave */}
       <div className="flex flex-wrap gap-2">
         {status.map((s) => (
-          <div key={s.expected} className={`px-2 py-1 rounded-md ${s.found ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+          <div
+            key={s.expected}
+            className={`px-2 py-1 rounded-md ${s.found
+              ? "bg-emerald-50 text-emerald-700"
+              : "bg-amber-50 text-amber-700"
+              }`}
+          >
             {s.found ? "✅" : "⚠"} {s.expected}
           </div>
         ))}
       </div>
-      <div className="text-xs text-slate-400">Columnas detectadas: {fileHeaders.length} · Extras: {extras.length}</div>
+
+      {/* Resumen de extras */}
+      <div className="text-xs text-slate-400">
+        Columnas en archivo: {fileHeaders.length}
+        {expectedCount > 0 && (
+          <> · Esperadas: {expectedCount}</>
+        )}
+        {" "}· Columnas extra (no en esquema): {extras.length}
+      </div>
     </div>
   );
 }
 
-type ScoreResult = { reporte: string; score: number; matched: number; total: number };
+type ScoreResult = {
+  reporte: string;
+  score: number;        // score de columnas clave (0-1)
+  matched: number;
+  total: number;
+  columnScore: number;  // score de conteo total (0-1)
+  compositeScore: number; // score final combinado
+  fileCount: number;    // columnas del archivo
+  expectedCount: number; // columnas esperadas para el reporte
+};
 
 const RFE_SCHEMAS = EXPECTED_COLUMNS;
 
@@ -106,29 +167,60 @@ function reportsInSameGroup(a: string, b: string) {
   return false;
 }
 
-function calculateCompatibility(fileColumns: string[], schema: string[], reporteName = ""): ScoreResult {
+function calculateCompatibility(
+  fileColumns: string[],
+  schema: string[],
+  reporteName = ""
+): ScoreResult {
   const fileSet = new Set(fileColumns.map((c) => normalizeKey(String(c))));
   const normSchema = schema.map((s) => normalizeKey(String(s)));
   let matched = 0;
   for (const s of normSchema) if (fileSet.has(s)) matched++;
   const total = normSchema.length || 0;
   const score = total === 0 ? 0 : matched / total;
-  return { reporte: reporteName, score, matched, total };
+
+  const expectedCount = EXPECTED_COLUMN_COUNT[reporteName] ?? 0;
+  const fileCount = fileColumns.length;
+
+  // Si no hay restricción de conteo, columnScore neutro (1)
+  const columnScore =
+    expectedCount === 0
+      ? 1
+      : 1 - Math.min(1, Math.abs(fileCount - expectedCount) / expectedCount);
+
+  // Score compuesto: 70% columnas clave + 30% conteo total
+  const compositeScore = score * 0.7 + columnScore * 0.3;
+
+  return {
+    reporte: reporteName,
+    score,
+    matched,
+    total,
+    columnScore,
+    compositeScore,
+    fileCount,
+    expectedCount,
+  };
 }
 
 function detectBestMatch(fileColumns: string[]) {
-  const results: ScoreResult[] = Object.entries(RFE_SCHEMAS).map(([reporte, schema]) =>
-    calculateCompatibility(fileColumns, schema, reporte)
+  const results: ScoreResult[] = Object.entries(RFE_SCHEMAS).map(
+    ([reporte, schema]) => calculateCompatibility(fileColumns, schema, reporte)
   );
-  results.sort((a, b) => b.score - a.score);
+  results.sort((a, b) => b.compositeScore - a.compositeScore);
   return results;
 }
 
 const PRIVACY_MATCH_THRESHOLD = 0.5;
 
-function getValidationState(score: number) {
-  if (score > 0.85) return "success";
-  if (score > 0.6) return "warning";
+function getValidationState(score: number, report?: string, fileHeaders?: string[]) {
+  const expectedCount = report ? (EXPECTED_COLUMN_COUNT[report] ?? 0) : 0;
+  const countOk =
+    expectedCount === 0 ||
+    (fileHeaders && fileHeaders.length === expectedCount);
+
+  if (score > 0.85 && countOk !== false) return "success";
+  if (score > 0.6 || countOk === false) return "warning";
   return "error";
 }
 
@@ -257,81 +349,88 @@ export default function Home() {
     const reader = new FileReader();
 
     reader.onprogress = (e) => {
-      if (e.lengthComputable && fileMB > 10) {
+      if (e.lengthComputable) {
         const pct = Math.round((e.loaded / e.total) * 100);
         setLoadingProgress(`Leyendo archivo… ${pct}%`);
       }
     };
 
     reader.onload = (e) => {
-      try {
-        setLoadingProgress("Detectando estructura…");
-        let parsed;
-        const initLogs: LogEntry[] = [];
+      setLoadingProgress("Detectando estructura…");
 
-        if (ext === ".csv") {
-          parsed = parseCSV(e.target!.result as string);
-          initLogs.push(mkLog("info", `Archivo CSV cargado: ${file.name}`));
-          initLogs.push(mkLog("info", `Delimitador detectado: "${parsed.csvDelimiter === "\t" ? "\\t (tab)" : parsed.csvDelimiter}"`));
-        } else {
-          parsed = parseExcel(e.target!.result as ArrayBuffer);
-          initLogs.push(mkLog("info", `Archivo Excel cargado: ${file.name}`));
-          initLogs.push(mkLog("dim", `Hoja activa: "${parsed.sheetName}"`));
-        }
-
-        initLogs.push(mkLog("dim", `${parsed.data.length} filas · ${parsed.headers.length} columnas detectadas`));
-        if (fileMB >= 1) {
-          initLogs.push(mkLog("dim", `Tamaño: ${fileMB.toFixed(1)} MB`));
-        }
-
-        const newFileState: FileState = {
-          name: file.name,
-          size: file.size,
-          data: parsed.data,
-          headers: parsed.headers,
-          isCSV: parsed.isCSV,
-          csvDelimiter: parsed.csvDelimiter,
-          rawRows: parsed.rawRows,
-          headerRowIndex: parsed.headerRowIndex,
-        };
-
-        setFileState(newFileState);
-        setLogs(initLogs);
-        setHasRun(false);
-        setShowPreview(true);
-
-        // ─── Inicializar vista efectiva con la fila de encabezado actual ──────
-        // Reseteamos a fila 1 al cargar un archivo nuevo para evitar
-        // que una selección previa quede desfasada con el nuevo archivo.
-        setHeaderRow(1);
-        setHeaderRowInput("1");
-        setEffectiveHeaders(parsed.headers);
-        setEffectiveData(parsed.data);
-        setSelectedCols(new Set(parsed.headers));
-        // ─────────────────────────────────────────────────────────────────────
-
-        // Detección automática
+      setTimeout(() => {
         try {
-          const results = detectBestMatch(parsed.headers || []);
-          setDetectionResults(results);
-          setBestMatch(results.length ? results[0] : null);
-          if (RFE_SCHEMAS[report]) {
-            const sel = calculateCompatibility(parsed.headers || [], RFE_SCHEMAS[report], report);
-            setValidationState(getValidationState(sel.score));
+          let parsed;
+          const initLogs: LogEntry[] = [];
+
+          if (ext === ".csv") {
+            parsed = parseCSV(e.target!.result as string);
+            setLoadingProgress("Procesando CSV…");
+            initLogs.push(mkLog("info", `Archivo CSV cargado: ${file.name}`));
+            initLogs.push(
+              mkLog("info", `Delimitador detectado: "${parsed.csvDelimiter === "\t" ? "\\t (tab)" : parsed.csvDelimiter}"`)
+            );
           } else {
+            parsed = parseExcel(e.target!.result as ArrayBuffer);
+            setLoadingProgress("Procesando Excel…");
+            initLogs.push(mkLog("info", `Archivo Excel cargado: ${file.name}`));
+            initLogs.push(mkLog("dim", `Hoja activa: "${parsed.sheetName}"`));
+          }
+
+          setLoadingProgress("Analizando columnas…");
+
+          initLogs.push(mkLog("dim", `${parsed.data.length} filas · ${parsed.headers.length} columnas detectadas`));
+          if (fileMB >= 1) {
+            initLogs.push(mkLog("dim", `Tamaño: ${fileMB.toFixed(1)} MB`));
+          }
+
+          const newFileState: FileState = {
+            name: file.name,
+            size: file.size,
+            data: parsed.data,
+            headers: parsed.headers,
+            isCSV: parsed.isCSV,
+            csvDelimiter: parsed.csvDelimiter,
+            rawRows: parsed.rawRows,
+            headerRowIndex: parsed.headerRowIndex,
+          };
+
+          setFileState(newFileState);
+          setLogs(initLogs);
+          setHasRun(false);
+          setShowPreview(true);
+
+          setHeaderRow(1);
+          setHeaderRowInput("1");
+          setEffectiveHeaders(parsed.headers);
+          setEffectiveData(parsed.data);
+          setSelectedCols(new Set(parsed.headers));
+
+          setLoadingProgress("¡Listo!");
+
+          // Detección automática
+          try {
+            const results = detectBestMatch(parsed.headers || []);
+            setDetectionResults(results);
+            setBestMatch(results.length ? results[0] : null);
+            if (RFE_SCHEMAS[report]) {
+              const sel = calculateCompatibility(parsed.headers || [], RFE_SCHEMAS[report], report);
+              setValidationState(getValidationState(sel.score, report, parsed.headers));
+            } else {
+              setValidationState(null);
+            }
+          } catch {
+            setDetectionResults(null);
+            setBestMatch(null);
             setValidationState(null);
           }
-        } catch {
-          setDetectionResults(null);
-          setBestMatch(null);
-          setValidationState(null);
+        } catch (err) {
+          setLogs([mkLog("error", `[ERROR] No se pudo leer el archivo: ${(err as Error).message}`)]);
+        } finally {
+          setLoadingFile(false);
+          setLoadingProgress("");
         }
-      } catch (err) {
-        setLogs([mkLog("error", `[ERROR] No se pudo leer el archivo: ${(err as Error).message}`)]);
-      } finally {
-        setLoadingFile(false);
-        setLoadingProgress("");
-      }
+      }, 0);
     };
 
     reader.onerror = () => {
@@ -651,7 +750,16 @@ export default function Home() {
 
         {/* Column validation (RFE) — detection summary & suggestion */}
         {fileState && detectionResults && (() => {
-          const isLowMatch = kpi === "RFE" && (!bestMatch || bestMatch.score <= PRIVACY_MATCH_THRESHOLD);
+          // ── Usar compositeScore como criterio principal ──────────────────────
+          const isLowMatch = kpi === "RFE" && (
+            !bestMatch || bestMatch.compositeScore <= PRIVACY_MATCH_THRESHOLD
+          );
+
+          // ── Veredicto de conteo para el bestMatch ───────────────────────────
+          const countDiff = bestMatch
+            ? bestMatch.fileCount - bestMatch.expectedCount
+            : 0;
+
           return (
             <div className="mb-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3">
               <div className="flex items-start gap-3">
@@ -665,40 +773,72 @@ export default function Home() {
                         : "— Selección manual —"}`}
                   </div>
                 </div>
+
+                {/* ── Panel derecho: bestMatch con veredicto completo ──────────── */}
                 <div className="text-right">
                   {!isLowMatch && bestMatch && (
-                    <div className="text-xs">
+                    <div className="text-xs space-y-1">
                       <div className="text-slate-500">Mejor coincidencia:</div>
-                      <div className="font-medium text-slate-700 dark:text-slate-200">{bestMatch.reporte} ({Math.round(bestMatch.score * 100)}%)</div>
+                      <div className="font-medium text-slate-700 dark:text-slate-200">
+                        {bestMatch.reporte}{" "}
+                        <span className="text-slate-400">
+                          ({Math.round(bestMatch.compositeScore * 100)}%)
+                        </span>
+                      </div>
+                      {/* Sub-scores desglosados */}
+                      <div className="text-slate-400 text-[10px] leading-tight pt-0.5">
+                        Columnas clave: {Math.round(bestMatch.score * 100)}%
+                        {bestMatch.expectedCount > 0 && (
+                          <> · Conteo: {Math.round(bestMatch.columnScore * 100)}%</>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
 
+              {/* ── Alertas ──────────────────────────────────────────────────────── */}
               {isLowMatch ? (
                 <div className="mt-3 p-3 rounded-md bg-amber-50 border border-amber-100 text-amber-800 text-sm">
                   <div className="font-medium">⚠ Posible error de selección de reporte</div>
-                  <div className="mt-1 text-slate-600 text-xs">No se puede determinar con suficiente confianza el layout del reporte.</div>
-                </div>
-              ) : (kpi === "RFE" && bestMatch && bestMatch.reporte !== report && bestMatch.score > 0.7 && !reportsInSameGroup(report, bestMatch.reporte) && (
-                <div className="mt-3 p-3 rounded-md bg-amber-50 border border-amber-100 text-amber-800 text-sm">
-                  <div className="font-medium">⚠ Posible error de selección de reporte</div>
-                  <div className="mt-1">Este archivo coincide más con: <span className="font-semibold">{bestMatch.reporte}</span> ({Math.round(bestMatch.score * 100)}%)</div>
-                  <div className="mt-2">
-                    <button
-                      onClick={() => {
-                        if (!bestMatch) return;
-                        setReport(bestMatch.reporte);
-                        setLogs((l) => [...l, mkLog("info", `Reporte cambiado automáticamente a ${bestMatch.reporte}`)]);
-                        setValidationState(getValidationState(bestMatch.score));
-                      }}
-                      className="mt-1 inline-flex items-center gap-2 text-xs px-3 py-1 rounded-md bg-amber-600 text-white"
-                    >
-                      Cambiar automáticamente
-                    </button>
+                  <div className="mt-1 text-slate-600 text-xs">
+                    No se puede determinar con suficiente confianza el layout del reporte.
                   </div>
                 </div>
-              ))}
+              ) : (
+                kpi === "RFE" &&
+                bestMatch &&
+                bestMatch.reporte !== report &&
+                bestMatch.compositeScore > 0.7 &&          // ← compositeScore, no score
+                !reportsInSameGroup(report, bestMatch.reporte) && (
+                  <div className="mt-3 p-3 rounded-md bg-amber-50 border border-amber-100 text-amber-800 text-sm">
+                    <div className="font-medium">⚠ Posible error de selección de reporte</div>
+                    <div className="mt-1">
+                      Este archivo coincide más con:{" "}
+                      <span className="font-semibold">{bestMatch.reporte}</span>{" "}
+                      ({Math.round(bestMatch.compositeScore * 100)}%)
+                    </div>
+                    <div className="mt-2">
+                      <button
+                        onClick={() => {
+                          if (!bestMatch) return;
+                          setReport(bestMatch.reporte);
+                          setLogs((l) => [
+                            ...l,
+                            mkLog("info", `Reporte cambiado automáticamente a ${bestMatch.reporte}`),
+                          ]);
+                          setValidationState(
+                            getValidationState(bestMatch.compositeScore, bestMatch.reporte, effectiveHeaders)
+                          );
+                        }}
+                        className="mt-1 inline-flex items-center gap-2 text-xs px-3 py-1 rounded-md bg-amber-600 text-white"
+                      >
+                        Cambiar automáticamente
+                      </button>
+                    </div>
+                  </div>
+                )
+              )}
             </div>
           );
         })()}
@@ -745,7 +885,7 @@ export default function Home() {
                 disabled={!hasRun}
                 className={`text-xs px-2 py-1 rounded-md border text-slate-600 ${hasRun ? "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800" : "border-slate-100 bg-slate-50/40 opacity-50 cursor-not-allowed"}`}
               >
-                {showTechnicalLogs ? "Ocultar logs técnicos" : "Ver logs técnicos"}
+                {showTechnicalLogs ? "Ocultar logs" : "Ver logs"}
               </button>
             </div>
           </div>

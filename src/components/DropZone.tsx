@@ -86,29 +86,18 @@ export function DropZone({
 
         {/* ── Estado: cargando ── */}
         {loading && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", padding: "8px 0" }}>
-            <Spinner size={48} />
-            <div style={{ textAlign: "center" }}>
-              <p style={{
-                fontSize: "14px",
-                fontWeight: 500,
-                color: "#16a34a",
-                margin: 0,
-                minWidth: "180px",
-              }}>
+          <div className="flex flex-col items-center gap-3 py-2">
+            <Spinner />
+            <div className="text-center">
+              <p className="text-sm font-medium text-green-600 min-w-[180px]">
                 {loadingProgress ?? "Leyendo archivo…"}
               </p>
-              <p style={{
-                fontSize: "11px",
-                color: "#94a3b8",
-                marginTop: "4px",
-              }}>
+              <p className="text-xs text-slate-400 mt-1">
                 Procesamiento local · los datos no salen del navegador
               </p>
             </div>
           </div>
         )}
-
         {/* ── Estado: archivo cargado ── */}
         {!loading && fileName && (
           <>

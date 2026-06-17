@@ -87,14 +87,14 @@ export function processClientes(
   const logs: LogEntry[] = [];
   const nm = buildNormMap(headers);
 
-  const cEstado = resolveCol(nm, ["estado bc", "estado_bc", "bc"]);
+  const cEstado = resolveCol(nm, ["Estado BC", "estado_bc", "bc"]);
   const cAgencia = resolveCol(nm, ["cod_agencia", "codigo agencia"]);
   const cDescAg = resolveCol(nm, ["agencia", "descripcion agencia"]);
   const cAsesor = resolveCol(nm, ["cod_asesor", "codigo asesor"]);
   const cNomAs = resolveCol(nm, ["asesor_servicios", "nombre_asesor"]);
   const cCodAc = resolveCol(nm, ["cod_ac", "codigo_ac", "codigo asociacion"]);
   const cAsoc = resolveCol(nm, ["asociacion_comunal", "asociacion_co"]);
-  const cSit = resolveCol(nm, ["situación", "situacion", "estado_cliente"]);
+  const cSit = resolveCol(nm, ["Situación", "Situacion", "estado_cliente"]);
 
   const toStr = (v: unknown) => String(v ?? "");
   if (!cEstado) {
