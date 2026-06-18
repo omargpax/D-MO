@@ -13,7 +13,7 @@ export function PreviewTable({ headers, rows, limit = 10 }: Props) {
           <thead>
             <tr>
               {headers.map((h) => (
-                <th key={h} className="px-2 py-1 text-left text-xs font-medium text-slate-500 border-b border-slate-100">
+                <th key={h} className="px-2 py-1 text-left text-xs font-bold text-slate-700 dark:text-slate-100 border-b border-slate-400/80 dark:border-slate-500">
                   {h}
                 </th>
               ))}
@@ -21,7 +21,7 @@ export function PreviewTable({ headers, rows, limit = 10 }: Props) {
           </thead>
           <tbody>
             {slice.map((r, i) => (
-              <tr key={i} className="odd:bg-slate-50 even:bg-white dark:odd:bg-slate-900/50">
+              <tr key={i} className="odd:bg-slate-50 even:bg-white dark:odd:bg-slate-800/50 dark:even:bg-slate-900">
                 {headers.map((h) => (
                   <td key={h} className="px-2 py-1 text-xs text-slate-700 dark:text-slate-200 truncate max-w-xs">
                     {String(r[h] ?? "")}
