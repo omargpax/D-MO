@@ -14,7 +14,7 @@
 
 ---
 
-## [v1.2.0-beta] — UI Refactor 📦
+## [v1.2.0] — UI Refactor 📦
 
 ### 🚀 Features
 - **Detección inteligente de reportes:** Implementación de algoritmos de correspondencia (`calculateCompatibility`, `detectBestMatch`) para identificar automáticamente el tipo de esquema RFE según las columnas del archivo cargado.
