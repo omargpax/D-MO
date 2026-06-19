@@ -7,48 +7,75 @@ export type ParsedFile = {
   isCSV: boolean;
   csvDelimiter?: string;
   sheetName?: string;
-  rawRows?: unknown[][];          // filas sin procesar
-  headerRowIndex?: number; 
+  sheetNames?: string[];          // hojas disponibles en el archivo Excel
+  rawRows?: unknown[][];
+  headerRowIndex?: number;
 };
 
-export function parseExcel(buffer: ArrayBuffer): ParsedFile {
-  const wb = XLSX.read(new Uint8Array(buffer), { type: "array", cellDates: true });
-  const sheetName = wb.SheetNames[0];
-  const ws = wb.Sheets[sheetName];
-
-  // Filas crudas en formato array (sin encabezados)
+// ── Lógica compartida para parsear una worksheet ────────────────────────────
+function parseWorksheet(
+  ws: XLSX.WorkSheet
+): Pick<ParsedFile, "data" | "headers" | "rawRows" | "headerRowIndex"> {
   const rawRows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "" });
 
-  // ── DETECCIÓN DE FILA TÍTULO (celda combinada) ──────────────────────────────
-  // Una fila de título/celda-combinada tiene muy pocas celdas no vacías (≤ 2)
-  // mientras que una fila de headers tiene muchas columnas con texto.
-  // Detectamos si rawRows[0] es título y rawRows[1] son los headers reales.
   let headerRowIndex = 0;
 
   if (rawRows.length >= 2) {
     const firstRowNonEmpty  = (rawRows[0] as unknown[]).filter((c) => String(c ?? "").trim() !== "").length;
     const secondRowNonEmpty = (rawRows[1] as unknown[]).filter((c) => String(c ?? "").trim() !== "").length;
 
-    // Si la fila 0 tiene ≤ 2 celdas con contenido Y la fila 1 tiene muchas más → fila 0 es título
     if (firstRowNonEmpty <= 2 && secondRowNonEmpty > firstRowNonEmpty * 2) {
       headerRowIndex = 1;
     }
   }
 
-  // Parse normal usando el índice de fila de headers detectado
   const data = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, {
     defval: "",
-    range: headerRowIndex,   // le dice a SheetJS desde qué fila leer encabezados
+    range: headerRowIndex,
   });
   const headers = data.length ? Object.keys(data[0]) : [];
+
+  return { data, headers, rawRows, headerRowIndex };
+}
+
+export function parseExcel(buffer: ArrayBuffer): ParsedFile {
+  const wb = XLSX.read(new Uint8Array(buffer), { type: "array", cellDates: true });
+  const sheetNames = wb.SheetNames;           // ← NUEVO
+  const sheetName  = sheetNames[0];
+  const ws = wb.Sheets[sheetName];
+
+  const { data, headers, rawRows, headerRowIndex } = parseWorksheet(ws);
 
   return {
     data,
     headers,
     isCSV: false,
     sheetName,
+    sheetNames,                               // ← NUEVO
     rawRows,
-    headerRowIndex,          // ← para que el engine sepa qué pasó
+    headerRowIndex,
+  };
+}
+
+// ── NUEVA FUNCIÓN: parsear una hoja específica por nombre ───────────────────
+export function parseExcelSheet(buffer: ArrayBuffer, sheetName: string): ParsedFile {
+  const wb = XLSX.read(new Uint8Array(buffer), { type: "array", cellDates: true });
+
+  if (!wb.SheetNames.includes(sheetName)) {
+    throw new Error(`La hoja "${sheetName}" no existe en el archivo.`);
+  }
+
+  const ws = wb.Sheets[sheetName];
+  const { data, headers, rawRows, headerRowIndex } = parseWorksheet(ws);
+
+  return {
+    data,
+    headers,
+    isCSV: false,
+    sheetName,
+    sheetNames: wb.SheetNames,
+    rawRows,
+    headerRowIndex,
   };
 }
 

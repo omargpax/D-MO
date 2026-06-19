@@ -8,7 +8,7 @@ import { StatsBar } from "@/components/StatsBar";
 import { HowItWorks } from "@/components/HowItWorks";
 import { PreviewTable } from "@/components/PreviewTable";
 import { SummaryLogs } from "@/components/SummaryLogs";
-import { parseExcel, parseCSV, exportFile } from "@/lib/file-parser";
+import { parseExcel, parseExcelSheet, parseCSV, exportFile } from "@/lib/file-parser";
 import {
   processClientes, processClientesIN, processClientesOUT,
   processColocaciones, processCartera, processFondoComun,
@@ -281,9 +281,12 @@ type FileState = {
   csvDelimiter?: string;
   rawRows?: unknown[][];
   headerRowIndex?: number;
+  sheetNames?: string[];   // ← custom
+  activeSheet?: string;    // ← custom
 };
 
 export default function Home() {
+  const [fileBuffer, setFileBuffer] = useState<ArrayBuffer | null>(null); // guardar buffer para re-parsear hojas
   const [fileState, setFileState] = useState<FileState | null>(null);
   const [loadingFile, setLoadingFile] = useState(false);
   const [loadingProgress, setLoadingProgress] = useState<string>("");
@@ -337,6 +340,42 @@ export default function Home() {
   );
   // ─────────────────────────────────────────────────────────────────────────────
 
+  const handleSheetChange = useCallback((sheetName: string) => {
+    if (!fileBuffer) return;
+    try {
+      const parsed = parseExcelSheet(fileBuffer, sheetName); // función nueva del parser
+      const newFileState: FileState = {
+        name: fileState!.name,
+        size: fileState!.size,
+        data: parsed.data,
+        headers: parsed.headers,
+        isCSV: false,
+        rawRows: parsed.rawRows,
+        headerRowIndex: parsed.headerRowIndex,
+        sheetNames: fileState!.sheetNames,
+        activeSheet: sheetName,
+      };
+      setFileState(newFileState);
+      setHeaderRow(1);
+      setHeaderRowInput("1");
+      setEffectiveHeaders(parsed.headers);
+      setEffectiveData(parsed.data);
+      setSelectedCols(new Set(parsed.headers));
+      setHasRun(false);
+      setShowPreview(true);
+      setLogs((prev) => [
+        ...prev,
+        mkLog("info", `Hoja cambiada → "${sheetName}" · ${parsed.data.length} filas · ${parsed.headers.length} columnas`),
+      ]);
+      // Re-detectar compatibilidad
+      const results = detectBestMatch(parsed.headers);
+      setDetectionResults(results);
+      setBestMatch(results.length ? results[0] : null);
+    } catch (err) {
+      setLogs((prev) => [...prev, mkLog("error", `No se pudo cargar la hoja "${sheetName}": ${(err as Error).message}`)]);
+    }
+  }, [fileBuffer, fileState]);
+
   const handleFile = useCallback((file: File) => {
     setLoadingFile(true);
     setLoadingProgress("Leyendo archivo…");
@@ -371,10 +410,15 @@ export default function Home() {
               mkLog("info", `Delimitador detectado: "${parsed.csvDelimiter === "\t" ? "\\t (tab)" : parsed.csvDelimiter}"`)
             );
           } else {
-            parsed = parseExcel(e.target!.result as ArrayBuffer);
+            const buffer = e.target!.result as ArrayBuffer;
+            setFileBuffer(buffer);                                 // ← buffer guardado en Excel
+            parsed = parseExcel(buffer);
             setLoadingProgress("Procesando Excel…");
             initLogs.push(mkLog("info", `Archivo Excel cargado: ${file.name}`));
             initLogs.push(mkLog("dim", `Hoja activa: "${parsed.sheetName}"`));
+            if ((parsed.sheetNames?.length ?? 0) > 1) {
+              initLogs.push(mkLog("dim", `Hojas disponibles: ${parsed.sheetNames!.join(", ")}`));
+            }
           }
 
           setLoadingProgress("Analizando columnas…");
@@ -393,6 +437,8 @@ export default function Home() {
             csvDelimiter: parsed.csvDelimiter,
             rawRows: parsed.rawRows,
             headerRowIndex: parsed.headerRowIndex,
+            sheetNames: parsed.sheetNames,
+            activeSheet: parsed.sheetName,
           };
 
           setFileState(newFileState);
@@ -663,10 +709,28 @@ export default function Home() {
           />
           <SelectField
             label="Reporte"
-            value={report}
-            onChange={setReport}
-            options={kpi === "RFE" ? RFE_REPORTS : [{ value: "custom", label: "— Selección manual —" }]}
-            disabled={kpi === "CUSTOM"}
+            value={
+              kpi === "CUSTOM" && fileState?.activeSheet
+                ? fileState.activeSheet   // muestra la hoja activa como valor seleccionado
+                : report
+            }
+            onChange={(val) => {
+              if (kpi === "CUSTOM") {
+                handleSheetChange(val);   // cambio de hoja
+              } else {
+                setReport(val);
+              }
+            }}
+            options={
+              kpi === "RFE"
+                ? RFE_REPORTS
+                : fileState?.sheetNames?.length
+                  ? fileState.sheetNames.map((s) => ({ value: s, label: s }))
+                  : [{ value: "custom", label: "— Carga un archivo —" }]
+            }
+            disabled={
+              kpi === "CUSTOM" && (!fileState || fileState.isCSV || (fileState.sheetNames?.length ?? 0) <= 1)
+            }
           />
           <SelectField
             label="Formato de salida"
@@ -724,14 +788,6 @@ export default function Home() {
                   </span>
                 )}
               </div>
-              {/* Hint bajo el campo */}
-              <p className="text-[10px] text-slate-400 leading-tight">
-                {fileState
-                  ? headerRow === 1
-                    ? "Fila 1 = encabezado original"
-                    : `Descarta ${headerRow - 1} fila${headerRow - 1 > 1 ? "s" : ""} previas`
-                  : "Carga un archivo primero"}
-              </p>
             </div>
           )}
           {/* ──────────────────────────────────────────────────────────────────── */}
