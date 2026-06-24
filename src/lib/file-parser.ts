@@ -21,7 +21,7 @@ function parseWorksheet(
   let headerRowIndex = 0;
 
   if (rawRows.length >= 2) {
-    const firstRowNonEmpty  = (rawRows[0] as unknown[]).filter((c) => String(c ?? "").trim() !== "").length;
+    const firstRowNonEmpty = (rawRows[0] as unknown[]).filter((c) => String(c ?? "").trim() !== "").length;
     const secondRowNonEmpty = (rawRows[1] as unknown[]).filter((c) => String(c ?? "").trim() !== "").length;
 
     if (firstRowNonEmpty <= 2 && secondRowNonEmpty > firstRowNonEmpty * 2) {
@@ -41,7 +41,7 @@ function parseWorksheet(
 export function parseExcel(buffer: ArrayBuffer): ParsedFile {
   const wb = XLSX.read(new Uint8Array(buffer), { type: "array", cellDates: true });
   const sheetNames = wb.SheetNames;           // ← NUEVO
-  const sheetName  = sheetNames[0];
+  const sheetName = sheetNames[0];
   const ws = wb.Sheets[sheetName];
 
   const { data, headers, rawRows, headerRowIndex } = parseWorksheet(ws);
@@ -106,8 +106,12 @@ export function exportFile(
     return o;
   });
 
-  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 16);
-  const fname = `ETL_${reportName.toUpperCase()}_${ts}.${format}`;
+  const d = new Date();
+  const fecha = [String(d.getDate()).padStart(2, '0'),String(d.getMonth() + 1).padStart(2, '0'),d.getFullYear()].join('');
+  const hora = [String(d.getHours()).padStart(2, '0'),String(d.getMinutes()).padStart(2, '0')].join('');
+  const ts = `${fecha}_${hora}`;
+
+  const fname = `${reportName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, "_")}_${ts}.${format}`;
 
   if (format === "csv") {
     const csv = Papa.unparse(ordered, { columns: cols });

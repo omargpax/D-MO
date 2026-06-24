@@ -565,7 +565,10 @@ export default function Home() {
         fondo_comun: "FC_BC",
       };
 
-      const reportLabel = kpi === "CUSTOM" ? "CUSTOM" : REPORT_LABELS[report] || report;
+      const reportLabel: string = (kpi === "CUSTOM")
+        ? (fileState?.activeSheet ?? "")
+        : (REPORT_LABELS[report] ?? report ?? "");
+
       exportFile(result.rows, result.cols, outputFormat, reportLabel);
 
       const elapsed = Math.round(performance.now() - t0);

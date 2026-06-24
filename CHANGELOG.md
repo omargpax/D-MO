@@ -37,11 +37,3 @@
 - **Fuga de estilos en Modo Oscuro:** Solucionado el problema de persistencia de fondos claros en el Header al alternar el tema global.
 - **Persistencia de estado:** Corrección del ciclo de vida del estado de detección, asegurando un reset limpio de metadatos al remover el archivo actual.
 
----
-
-### 📷 Antes / Después — Evolución de la Interfaz
-
-* **Versión Anterior:** UI minimalista plana, navegación descentralizada, ausencia de feedback predictivo sobre el origen de los datos de entrada.
-* **Versión Actual:** Arquitectura orientada a la experiencia de usuario (UX), detección asistida con control de errores dinámico, previsualización en cliente y documentación integrada.
-
-![Evolución de Interfaz D-MO](public/assets/comparison-v1_2_0.jpg)
